@@ -26,7 +26,7 @@
       <a-modal
         class="token-import-modal"
         v-model:visible="showImportForm"
-        width="40rem"
+        width="52rem"
         :footer="false"
         :default-visible="!tokenStore.hasTokens"
       >
@@ -48,6 +48,7 @@
             <n-radio-button value="manual"> 手动输入 </n-radio-button>
             <n-radio-button value="url"> URL获取 </n-radio-button>
             <n-radio-button value="wxQrcode"> 微信扫码获取 </n-radio-button>
+            <n-radio-button value="wxForceLogout"> 强制下线扫码 </n-radio-button>
             <n-radio-button value="bin"> BIN多角色获取 </n-radio-button>
             <n-radio-button value="singlebin"> BIN单角色获取 </n-radio-button>
           </n-radio-group>
@@ -68,6 +69,12 @@
             @ok="() => (showImportForm = false)"
             v-if="importMethod === 'wxQrcode'"
           />
+          <wx-qrcode-form
+            :force-logout="true"
+            @cancel="() => (showImportForm = false)"
+            @ok="() => (showImportForm = false)"
+            v-if="importMethod === 'wxForceLogout'"
+          />
           <bin-token-form
             @cancel="() => (showImportForm = false)"
             @ok="() => (showImportForm = false)"
@@ -84,14 +91,15 @@
       <!-- Token列表 -->
       <div v-if="tokenStore.hasTokens" class="tokens-section">
         <div class="section-header">
-          <n-space align="center">
+          <div class="section-main">
+            <div class="section-title-row">
             <h2>我的Token列表 ({{ tokenStore.gameTokens.length }}个)</h2>
             <n-radio-group v-model:value="viewMode" size="small">
               <n-radio-button value="list">列表</n-radio-button>
               <n-radio-button value="card">卡片</n-radio-button>
             </n-radio-group>
-            <n-divider vertical style="height: 24px"></n-divider>
-            <n-button-group size="small">
+            </div>
+            <n-button-group size="small" class="sort-buttons">
               <n-button
                 @click="toggleSort('name')"
                 :type="sortConfig.field === 'name' ? 'primary' : 'default'"
@@ -117,7 +125,7 @@
                 最后使用 {{ getSortIcon("lastUsed") }}
               </n-button>
             </n-button-group>
-          </n-space>
+          </div>
           <div class="header-actions">
             <n-button type="info" @click="openGame">
               <template #icon>
@@ -134,6 +142,14 @@
                 </n-icon>
               </template>
               批量功能
+            </n-button>
+            <n-button type="warning" @click="goToPushingLevels">
+              <template #icon>
+                <n-icon>
+                  <Rocket />
+                </n-icon>
+              </template>
+              主线推关
             </n-button>
 
             <n-button
@@ -292,6 +308,7 @@
                       token.importMethod === 'url' ||
                       token.importMethod === 'bin' ||
                       token.importMethod === 'wxQrcode' ||
+                      token.importMethod === 'wxForceLogout' ||
                       token.upgradedToPermanent
                         ? 'success'
                         : 'warning'
@@ -301,6 +318,7 @@
                       token.importMethod === "url" ||
                       token.importMethod === "bin" ||
                       token.importMethod === "wxQrcode" ||
+                      token.importMethod === "wxForceLogout" ||
                       token.upgradedToPermanent
                         ? "长期有效"
                         : "临时存储"
@@ -315,6 +333,7 @@
                       token.importMethod === 'url' ||
                       token.importMethod === 'bin' ||
                       token.importMethod === 'wxQrcode' ||
+                      token.importMethod === 'wxForceLogout' ||
                       token.upgradedToPermanent
                     )
                   "
@@ -473,6 +492,7 @@
                     token.importMethod === 'url' ||
                     token.importMethod === 'bin' ||
                     token.importMethod === 'wxQrcode' ||
+                    token.importMethod === 'wxForceLogout' ||
                     token.upgradedToPermanent
                       ? 'success'
                       : 'warning'
@@ -482,6 +502,7 @@
                     token.importMethod === "url" ||
                     token.importMethod === "bin" ||
                     token.importMethod === "wxQrcode" ||
+                    token.importMethod === "wxForceLogout" ||
                     token.upgradedToPermanent
                       ? "长期"
                       : "临时"
@@ -495,6 +516,7 @@
                       token.importMethod === 'url' ||
                       token.importMethod === 'bin' ||
                       token.importMethod === 'wxQrcode' ||
+                      token.importMethod === 'wxForceLogout' ||
                       token.upgradedToPermanent
                     )
                   "
@@ -637,6 +659,7 @@ import {
   Key,
   Menu,
   Refresh,
+  Rocket,
   Star,
   SyncCircle,
   TrashBin,
@@ -646,6 +669,7 @@ import { NIcon, NAlert, useDialog, useMessage } from "naive-ui";
 import { h, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { transformToken, scheduleAuthUserRequest } from "@/utils/token";
+import { refreshTokenFromCombUser, roleIndexFromServerId } from "@/utils/wechatForceLogout";
 import { $emit } from "@/stores/events/index.ts";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import lz4 from "lz4js";
@@ -894,6 +918,24 @@ const refreshToken = async (token) => {
       });
 
       message.success("Token刷新成功");
+    } else if (token.importMethod === "wxForceLogout") {
+      if (!token.combUser) {
+        throw new Error("该账号未保存 combUser，无法自动刷新");
+      }
+      const refreshed = await refreshTokenFromCombUser(token.combUser, {
+        serverId: token.serverId,
+        roleIndex: token.roleIndex,
+        roleId: token.roleId,
+      });
+      await storeArrayBuffer(token.id, refreshed.bin);
+      tokenStore.updateToken(token.id, {
+        token: refreshed.token,
+        serverId: refreshed.role.serverId,
+        roleId: refreshed.role.roleId,
+        roleIndex: roleIndexFromServerId(refreshed.role.serverId),
+        lastRefreshed: Date.now(),
+      });
+      message.success("强制下线Token刷新成功");
     } else if (
       token.importMethod === "wxQrcode" ||
       token.importMethod === "bin"
@@ -1253,6 +1295,7 @@ const refreshAllTokens = async () => {
     (token) =>
       token.importMethod === "url" ||
       token.importMethod === "wxQrcode" ||
+      token.importMethod === "wxForceLogout" ||
       token.importMethod === "bin",
   );
   const manualTokens = tokenStore.gameTokens.filter(
@@ -1511,6 +1554,10 @@ const formatTime = (timestamp) => {
 
 const goToDashboard = () => {
   router.push("/admin/batch-daily-tasks");
+};
+
+const goToPushingLevels = () => {
+  router.push("/admin/PushingLevels");
 };
 
 // ============ BIN 格式转换（来自 convertBin.mjs） ============
@@ -1973,6 +2020,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--spacing-xl);
   margin-bottom: var(--spacing-xl);
   position: sticky;
   top: 0;
@@ -1990,13 +2038,31 @@ onUnmounted(() => {
   }
 }
 
+.section-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.sort-buttons {
+  flex-shrink: 0;
+}
+
 .header-actions {
   display: flex;
   gap: var(--spacing-md);
-  max-width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  flex: 0 0 auto;
+  overflow: visible;
   flex-wrap: nowrap;
+  justify-content: flex-end;
 }
 
 .tokens-grid {
@@ -2365,6 +2431,19 @@ onUnmounted(() => {
     flex-direction: column;
     gap: var(--spacing-md);
     align-items: stretch;
+  }
+
+  .section-main {
+    width: 100%;
+  }
+
+  .section-title-row {
+    flex-wrap: wrap;
+  }
+
+  .header-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .token-timestamps {

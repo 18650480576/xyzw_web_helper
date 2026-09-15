@@ -2,12 +2,12 @@
   <div class="wx-qrcode-import">
     <!-- 微信登录流程说明 -->
     <div class="login-flow-info">
-      <h3>微信扫码登录流程</h3>
+      <h3>{{ forceLogout ? "强制下线专用微信扫码" : "微信扫码登录流程" }}</h3>
       <ol class="flow-steps">
         <li>点击下方按钮获取微信登录二维码</li>
         <li>使用微信扫码并确认登录</li>
         <li>
-          系统将获取<strong color="red">该微信下所有角色</strong>的Token信息
+          系统将获取<strong color="red">该微信下所有角色</strong>的Token信息，并保存可用于刷新Token的登录凭据
         </li>
       </ol>
     </div>
@@ -109,6 +109,11 @@ import useIndexedDB from "@/hooks/useIndexedDB";
 import { g_utils } from "@/utils/bonProtocol";
 import { useTokenStore } from "@/stores/tokenStore";
 const tokenStore = useTokenStore();
+const props = withDefaults(
+  defineProps<{ forceLogout?: boolean }>(),
+  { forceLogout: false },
+);
+const forceLogout = props.forceLogout;
 const { storeArrayBuffer } = useIndexedDB();
 
 const message = useMessage();
@@ -153,8 +158,11 @@ const roleList = ref<
     roleIndex?: number;
     wsUrl: string;
     importMethod: string;
+    serverId?: string | number;
+    combUser?: any;
   }>
 >([]);
+const currentCombUser = ref<any>(null);
 
 const handleDownload = (roleInfo: any) => {
   if (!originalBinData.value) {
@@ -242,7 +250,9 @@ const addSelectedRole = async (roleInfo: any) => {
       server: String(serverNum) + "服",
       roleIndex: roleIndex,
       wsUrl: importForm.wsUrl || "",
-      importMethod: "wxQrcode",
+      importMethod: forceLogout ? "wxForceLogout" : "wxQrcode",
+      serverId: roleInfo.serverId,
+      combUser: currentCombUser.value,
     });
 
     message.success(`已添加角色: ${finalName}`);
@@ -530,6 +540,7 @@ const getEncryptedData = async (code) => {
     throw new Error("登录响应结构异常");
   }
   console.log("combUser:", combUser);
+  currentCombUser.value = combUser;
 
   // 这里简化处理，实际应该调用游戏加密模块生成bin
   // 由于是前端环境，我们模拟生成一个token
@@ -716,7 +727,7 @@ const handleImport = async () => {
   });
   console.log("当前Token列表:", tokenStore.gameTokens);
   message.success("Token添加成功");
-  roleList.value = [];
+    roleList.value = [];
   emit("ok");
 };
 
