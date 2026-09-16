@@ -2,7 +2,7 @@
   <div class="wx-qrcode-import">
     <!-- 微信登录流程说明 -->
     <div class="login-flow-info">
-      <h3>{{ forceLogout ? "强制下线专用微信扫码" : "微信扫码登录流程" }}</h3>
+      <h3>微信扫码登录流程</h3>
       <ol class="flow-steps">
         <li>点击下方按钮获取微信登录二维码</li>
         <li>使用微信扫码并确认登录</li>
@@ -10,6 +10,7 @@
           系统将获取<strong color="red">该微信下所有角色</strong>的Token信息，并保存可用于刷新Token的登录凭据
         </li>
       </ol>
+      <n-checkbox v-model:checked="saveCombUser">强制下线账号请勾选</n-checkbox>
     </div>
 
     <!-- 二维码显示区域 -->
@@ -103,17 +104,17 @@
 <script lang="ts" setup>
 import { ref, onMounted, onUnmounted, reactive } from "vue";
 import { Scan, Refresh, Close, CloudUpload } from "@vicons/ionicons5";
-import { NIcon, useMessage, NButton, NForm, NFormItem, NInput } from "naive-ui";
+import { NCheckbox, NIcon, useMessage, NButton, NForm, NFormItem, NInput } from "naive-ui";
 import { getTokenId, transformToken, getServerList } from "@/utils/token";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import { g_utils } from "@/utils/bonProtocol";
+import {
+  buildRoleBin,
+  downloadBinFile,
+  getRoleBinFileName,
+} from "@/utils/binFile";
 import { useTokenStore } from "@/stores/tokenStore";
 const tokenStore = useTokenStore();
-const props = withDefaults(
-  defineProps<{ forceLogout?: boolean }>(),
-  { forceLogout: false },
-);
-const forceLogout = props.forceLogout;
 const { storeArrayBuffer } = useIndexedDB();
 
 const message = useMessage();
@@ -163,6 +164,7 @@ const roleList = ref<
   }>
 >([]);
 const currentCombUser = ref<any>(null);
+const saveCombUser = ref(false);
 
 const handleDownload = (roleInfo: any) => {
   if (!originalBinData.value) {
@@ -170,25 +172,8 @@ const handleDownload = (roleInfo: any) => {
     return;
   }
   try {
-    const newData = { ...originalBinData.value };
-    newData.serverId = roleInfo.serverId; // 确保类型一致
-    const newBinBuffer = g_utils.encode(newData) as ArrayBuffer;
-    
-    // 构造文件名: bin-{server}-0-{roleId}-{name}.bin
-    let sid = Number(roleInfo.serverId);
-    let roleIndex = 0;
-    
-    if (sid >= 2000000) {
-      roleIndex = 2;
-      sid -= 2000000;
-    } else if (sid >= 1000000) {
-      roleIndex = 1;
-      sid -= 1000000;
-    }
-    
-    const serverNum = sid - 27;
-    const fileName = `bin-${serverNum}服-${roleIndex}-${roleInfo.roleId}-${roleInfo.name}.bin`;
-    
+    const newBinBuffer = buildRoleBin(originalBinData.value, roleInfo.serverId);
+    const fileName = getRoleBinFileName(roleInfo);
     downloadBinFile(fileName, newBinBuffer);
     message.success(`已开始下载: ${fileName}`);
   } catch (e: any) {
@@ -204,15 +189,15 @@ const addSelectedRole = async (roleInfo: any) => {
   }
 
   try {
-    const newData = { ...originalBinData.value };
-    newData.serverId = roleInfo.serverId; // 确保类型一致
-    const newBinBuffer = g_utils.encode(newData) as ArrayBuffer;
+    const newBinBuffer = buildRoleBin(originalBinData.value, roleInfo.serverId);
     const tokenId = getTokenId(newBinBuffer);
     const roleToken = await transformToken(newBinBuffer);
     const roleName = roleInfo.name || `角色_${roleInfo.roleId}`;
 
     // 刷新indexDB数据库token数据 (保存原始bin)
-    storeArrayBuffer(tokenId, newBinBuffer);
+    if (!saveCombUser.value) {
+      await storeArrayBuffer(tokenId, newBinBuffer);
+    }
 
     let sid = Number(roleInfo.serverId);
     let roleIndex = 0;
@@ -250,9 +235,9 @@ const addSelectedRole = async (roleInfo: any) => {
       server: String(serverNum) + "服",
       roleIndex: roleIndex,
       wsUrl: importForm.wsUrl || "",
-      importMethod: forceLogout ? "wxForceLogout" : "wxQrcode",
+      importMethod: "wxQrcode",
       serverId: roleInfo.serverId,
-      combUser: currentCombUser.value,
+      ...(saveCombUser.value ? { combUser: currentCombUser.value } : {}),
     });
 
     message.success(`已添加角色: ${finalName}`);
@@ -539,7 +524,6 @@ const getEncryptedData = async (code) => {
   if (!combUser) {
     throw new Error("登录响应结构异常");
   }
-  console.log("combUser:", combUser);
   currentCombUser.value = combUser;
 
   // 这里简化处理，实际应该调用游戏加密模块生成bin
@@ -729,23 +713,6 @@ const handleImport = async () => {
   message.success("Token添加成功");
     roleList.value = [];
   emit("ok");
-};
-
-const downloadBinFile = (fileName, bin) => {
-  const blob = new Blob([new Uint8Array(bin)], {
-    type: "application/octet-stream",
-  });
-
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(url);
 };
 
 /**

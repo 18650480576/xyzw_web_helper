@@ -30,7 +30,7 @@ declare interface TokenData {
   wsUrl: string | null; // 可选的自定义WebSocket URL
   server: string;
   remark?: string; // 备注信息
-  importMethod?: "manual" | "bin" | "url" | "wxQrcode" | "wxForceLogout";
+  importMethod?: "manual" | "bin" | "url" | "wxQrcode" | "mobile" | "wxForceLogout";
   sourceUrl?: string; // 当importMethod为url时，存储url链接
   avatar?: string; // 用户头像URL
   upgradedToPermanent?: boolean; // 是否升级为长期有效
@@ -373,32 +373,30 @@ export const useTokenStore = defineStore("tokens", () => {
           wsLogger.info(`从URL获取token成功: ${gameToken.name}`);
           refreshSuccess = true;
         }
+      } else if (gameToken.combUser) {
+        const refreshed = await refreshTokenFromCombUser(
+          gameToken.combUser as any,
+          {
+            serverId: gameToken.serverId,
+            roleIndex: gameToken.roleIndex,
+            roleId: gameToken.roleId,
+          },
+        );
+        updateToken(tokenId, {
+          ...gameToken,
+          token: refreshed.token,
+          serverId: refreshed.role.serverId,
+          roleId: refreshed.role.roleId,
+          roleIndex: roleIndexFromServerId(refreshed.role.serverId),
+          lastRefreshed: Date.now(),
+        } as any);
+        refreshSuccess = true;
       } else if (gameToken.importMethod === "wxForceLogout") {
-        if (!gameToken.combUser) {
-          wsLogger.error(`Token刷新失败: 未保存 combUser [${tokenId}]`);
-        } else {
-          const refreshed = await refreshTokenFromCombUser(
-            gameToken.combUser as any,
-            {
-              serverId: gameToken.serverId,
-              roleIndex: gameToken.roleIndex,
-              roleId: gameToken.roleId,
-            },
-          );
-          await storeArrayBuffer(tokenId, refreshed.bin);
-          updateToken(tokenId, {
-            ...gameToken,
-            token: refreshed.token,
-            serverId: refreshed.role.serverId,
-            roleId: refreshed.role.roleId,
-            roleIndex: roleIndexFromServerId(refreshed.role.serverId),
-            lastRefreshed: Date.now(),
-          } as any);
-          refreshSuccess = true;
-        }
+        wsLogger.error(`Token刷新失败: 未保存 combUser [${tokenId}]`);
       } else if (
         gameToken.importMethod === "bin" ||
-        gameToken.importMethod === "wxQrcode"
+        gameToken.importMethod === "wxQrcode" ||
+        gameToken.importMethod === "mobile"
       ) {
         // Bin形式token刷新
         let userToken: ArrayBuffer | null = await getArrayBuffer(tokenId);
@@ -1238,6 +1236,7 @@ export const useTokenStore = defineStore("tokens", () => {
         token.importMethod === "url" ||
         token.importMethod === "bin" ||
         token.importMethod === "wxQrcode" ||
+        token.importMethod === "mobile" ||
         token.importMethod === "wxForceLogout" ||
         token.upgradedToPermanent
       ) {
@@ -1267,6 +1266,7 @@ export const useTokenStore = defineStore("tokens", () => {
       token.importMethod !== "url" &&
       token.importMethod !== "bin" &&
       token.importMethod !== "wxQrcode" &&
+      token.importMethod !== "mobile" &&
       token.importMethod !== "wxForceLogout"
     ) {
       updateToken(tokenId, {

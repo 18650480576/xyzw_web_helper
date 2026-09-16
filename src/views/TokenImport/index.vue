@@ -48,7 +48,7 @@
             <n-radio-button value="manual"> 手动输入 </n-radio-button>
             <n-radio-button value="url"> URL获取 </n-radio-button>
             <n-radio-button value="wxQrcode"> 微信扫码获取 </n-radio-button>
-            <n-radio-button value="wxForceLogout"> 强制下线扫码 </n-radio-button>
+            <n-radio-button value="mobile"> 手机号验证码 </n-radio-button>
             <n-radio-button value="bin"> BIN多角色获取 </n-radio-button>
             <n-radio-button value="singlebin"> BIN单角色获取 </n-radio-button>
           </n-radio-group>
@@ -69,11 +69,10 @@
             @ok="() => (showImportForm = false)"
             v-if="importMethod === 'wxQrcode'"
           />
-          <wx-qrcode-form
-            :force-logout="true"
+          <mobile-token-form
             @cancel="() => (showImportForm = false)"
             @ok="() => (showImportForm = false)"
-            v-if="importMethod === 'wxForceLogout'"
+            v-if="importMethod === 'mobile'"
           />
           <bin-token-form
             @cancel="() => (showImportForm = false)"
@@ -308,6 +307,7 @@
                       token.importMethod === 'url' ||
                       token.importMethod === 'bin' ||
                       token.importMethod === 'wxQrcode' ||
+                      token.importMethod === 'mobile' ||
                       token.importMethod === 'wxForceLogout' ||
                       token.upgradedToPermanent
                         ? 'success'
@@ -318,6 +318,7 @@
                       token.importMethod === "url" ||
                       token.importMethod === "bin" ||
                       token.importMethod === "wxQrcode" ||
+                      token.importMethod === "mobile" ||
                       token.importMethod === "wxForceLogout" ||
                       token.upgradedToPermanent
                         ? "长期有效"
@@ -333,6 +334,7 @@
                       token.importMethod === 'url' ||
                       token.importMethod === 'bin' ||
                       token.importMethod === 'wxQrcode' ||
+                      token.importMethod === 'mobile' ||
                       token.importMethod === 'wxForceLogout' ||
                       token.upgradedToPermanent
                     )
@@ -492,6 +494,7 @@
                     token.importMethod === 'url' ||
                     token.importMethod === 'bin' ||
                     token.importMethod === 'wxQrcode' ||
+                    token.importMethod === 'mobile' ||
                     token.importMethod === 'wxForceLogout' ||
                     token.upgradedToPermanent
                       ? 'success'
@@ -502,6 +505,7 @@
                     token.importMethod === "url" ||
                     token.importMethod === "bin" ||
                     token.importMethod === "wxQrcode" ||
+                    token.importMethod === "mobile" ||
                     token.importMethod === "wxForceLogout" ||
                     token.upgradedToPermanent
                       ? "长期"
@@ -516,6 +520,7 @@
                       token.importMethod === 'url' ||
                       token.importMethod === 'bin' ||
                       token.importMethod === 'wxQrcode' ||
+                      token.importMethod === 'mobile' ||
                       token.importMethod === 'wxForceLogout' ||
                       token.upgradedToPermanent
                     )
@@ -646,12 +651,14 @@ import UrlTokenForm from "./url.vue";
 import BinTokenForm from "./bin.vue";
 import singleBinTokenForm from "./singlebin.vue";
 import WxQrcodeForm from "./wxqrcode.vue";
+import MobileTokenForm from "./mobile.vue";
 
 import { useTokenStore, selectedTokenId } from "@/stores/tokenStore";
 import {
   Add,
   Copy,
   Create,
+  DownloadOutline,
   EllipsisHorizontal,
   Grid,
   List,
@@ -666,10 +673,20 @@ import {
   GameController,
 } from "@vicons/ionicons5";
 import { NIcon, NAlert, useDialog, useMessage } from "naive-ui";
-import { h, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, h, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { transformToken, scheduleAuthUserRequest } from "@/utils/token";
-import { refreshTokenFromCombUser, roleIndexFromServerId } from "@/utils/wechatForceLogout";
+import {
+  generateBinFromCombUser,
+  refreshTokenFromCombUser,
+  roleIndexFromServerId,
+} from "@/utils/wechatForceLogout";
+import {
+  buildRoleBin,
+  downloadBinFile,
+  getBinPayload,
+  getRoleBinFileName,
+} from "@/utils/binFile";
 import { $emit } from "@/stores/events/index.ts";
 import useIndexedDB from "@/hooks/useIndexedDB";
 import lz4 from "lz4js";
@@ -918,7 +935,7 @@ const refreshToken = async (token) => {
       });
 
       message.success("Token刷新成功");
-    } else if (token.importMethod === "wxForceLogout") {
+    } else if (token.combUser || token.importMethod === "wxForceLogout") {
       if (!token.combUser) {
         throw new Error("该账号未保存 combUser，无法自动刷新");
       }
@@ -927,7 +944,6 @@ const refreshToken = async (token) => {
         roleIndex: token.roleIndex,
         roleId: token.roleId,
       });
-      await storeArrayBuffer(token.id, refreshed.bin);
       tokenStore.updateToken(token.id, {
         token: refreshed.token,
         serverId: refreshed.role.serverId,
@@ -935,10 +951,11 @@ const refreshToken = async (token) => {
         roleIndex: roleIndexFromServerId(refreshed.role.serverId),
         lastRefreshed: Date.now(),
       });
-      message.success("强制下线Token刷新成功");
+      message.success("combUser Token刷新成功");
     } else if (
       token.importMethod === "wxQrcode" ||
-      token.importMethod === "bin"
+      token.importMethod === "bin" ||
+      token.importMethod === "mobile"
     ) {
       let userToken = await getArrayBuffer(token.id);
       let usedOldKey = false;
@@ -1149,6 +1166,11 @@ const getTokenActions = (token) => {
       key: "copy",
       icon: () => h(NIcon, null, { default: () => h(Copy) }),
     },
+    {
+      label: "下载 BIN",
+      key: "download-bin",
+      icon: () => h(NIcon, null, { default: () => h(DownloadOutline) }),
+    },
   ];
 
   // 根据Token类型添加刷新选项
@@ -1186,6 +1208,9 @@ const handleTokenAction = async (key, token) => {
       break;
     case "copy":
       copyToken(token);
+      break;
+    case "download-bin":
+      downloadTokenBin(token);
       break;
     case "refresh":
       // 重新获取Token
@@ -1244,6 +1269,39 @@ const copyToken = async (token) => {
   }
 };
 
+const downloadTokenBin = async (token) => {
+  try {
+    let sourceBin;
+    if (token.combUser) {
+      sourceBin = generateBinFromCombUser(token.combUser, token.serverId);
+    } else {
+      sourceBin = await getArrayBuffer(token.id);
+      if (!sourceBin) sourceBin = await getArrayBuffer(token.name);
+      if (!sourceBin) {
+        throw new Error("该账号未保存 BIN 登录凭据，无法下载");
+      }
+    }
+
+    const payload = getBinPayload(sourceBin);
+    const serverId = token.serverId ?? payload.serverId;
+    if (serverId === undefined || serverId === null || serverId === "") {
+      throw new Error("BIN 登录凭据缺少区服信息");
+    }
+
+    const bin = buildRoleBin(payload, serverId);
+    const fileName = getRoleBinFileName({
+      serverId,
+      roleId: token.roleId ?? token.id,
+      name: token.name,
+    });
+    downloadBinFile(fileName, bin);
+    message.success(`已开始下载: ${fileName}`);
+  } catch (error) {
+    console.error("下载 BIN 失败:", error);
+    message.error(error.message || "下载 BIN 失败");
+  }
+};
+
 // 快速编辑备注功能
 const startEditRemark = (token) => {
   editingRemark.value = token.id;
@@ -1295,6 +1353,7 @@ const refreshAllTokens = async () => {
     (token) =>
       token.importMethod === "url" ||
       token.importMethod === "wxQrcode" ||
+      token.importMethod === "mobile" ||
       token.importMethod === "wxForceLogout" ||
       token.importMethod === "bin",
   );
