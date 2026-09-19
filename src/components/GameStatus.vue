@@ -117,8 +117,6 @@
       </div>
     </div>
 
-    <!-- 俱乐部赛车（合并自俱乐部赛车 + 疯狂赛车） -->
-
     <!-- 俱乐部签到（已迁移到俱乐部信息-概览，故隐藏原卡片） -->
     <div
       class="status-card legion-signin"
@@ -157,9 +155,8 @@
       </div>
     </div>
 
-    <!-- 俱乐部信息与疯狂赛车（同级卡片，仅俱乐部分区） -->
+    <!-- 俱乐部信息（仅俱乐部分区） -->
     <ClubInfo v-if="activeSection === 'club'" />
-    <ClubCarKing v-if="activeSection === 'club'" />
 
     <!-- 月度任务进度（提取组件） -->
     <MonthlyTasksCard v-show="activeSection === 'activity'" />

@@ -352,28 +352,6 @@
                 </n-button>
                 <n-button
                   size="small"
-                  @click="batchSmartSendCar"
-                  :disabled="
-                    isRunning ||
-                    selectedTokens.length === 0 ||
-                    !isCarActivityOpen
-                  "
-                >
-                  智能发车
-                </n-button>
-                <n-button
-                  size="small"
-                  @click="batchClaimCars"
-                  :disabled="
-                    isRunning ||
-                    selectedTokens.length === 0 ||
-                    !isCarActivityOpen
-                  "
-                >
-                  一键收车
-                </n-button>
-                <n-button
-                  size="small"
                   @click="store_purchase"
                   :disabled="isRunning || selectedTokens.length === 0"
                 >
@@ -2066,134 +2044,6 @@
               </div>
             </div>
             <n-divider title-placement="left" style="margin: 12px 0 8px 0"
-              >智能发车条件设置(0为不限制)</n-divider
-            >
-            <div class="settings-grid">
-              <div
-                class="setting-item"
-                style="
-                  flex-direction: row;
-                  justify-content: space-between;
-                  align-items: center;
-                "
-              >
-                <label class="setting-label">保底车辆颜色</label>
-                <n-select
-                  v-model:value="batchSettings.carMinColor"
-                  :options="[
-                    { label: '绿·普通', value: 1 },
-                    { label: '蓝·稀有', value: 2 },
-                    { label: '紫·史诗', value: 3 },
-                    { label: '橙·传说', value: 4 },
-                    { label: '红·神话', value: 5 },
-                    { label: '金·传奇', value: 6 },
-                  ]"
-                  size="small"
-                  style="width: 100px"
-                />
-              </div>
-              <div
-                class="setting-item"
-                style="
-                  flex-direction: row;
-                  justify-content: space-between;
-                  align-items: center;
-                "
-              >
-                <label class="setting-label">车辆强制刷新保底</label>
-                <n-switch
-                  v-model:value="batchSettings.useGoldRefreshFallback"
-                />
-              </div>
-            </div>
-            <div
-              class="settings-grid"
-              v-if="batchSettings.useGoldRefreshFallback"
-              style="margin-top: 12px"
-            >
-              <div
-                class="setting-item"
-                style="
-                  flex-direction: row;
-                  justify-content: space-between;
-                  align-items: center;
-                "
-              >
-                <label class="setting-label">需同时满足所有条件</label>
-                <n-switch
-                  v-model:value="batchSettings.smartDepartureMatchAll"
-                />
-              </div>
-              <div
-                class="setting-item"
-                style="
-                  flex-direction: row;
-                  justify-content: space-between;
-                  align-items: center;
-                "
-              >
-                <label class="setting-label">金砖 >=</label>
-                <n-input-number
-                  v-model:value="batchSettings.smartDepartureGoldThreshold"
-                  :min="0"
-                  :step="100"
-                  size="small"
-                  style="width: 100px"
-                />
-              </div>
-              <div
-                class="setting-item"
-                style="
-                  flex-direction: row;
-                  justify-content: space-between;
-                  align-items: center;
-                "
-              >
-                <label class="setting-label">招募令 >=</label>
-                <n-input-number
-                  v-model:value="batchSettings.smartDepartureRecruitThreshold"
-                  :min="0"
-                  :step="10"
-                  size="small"
-                  style="width: 100px"
-                />
-              </div>
-              <div
-                class="setting-item"
-                style="
-                  flex-direction: row;
-                  justify-content: space-between;
-                  align-items: center;
-                "
-              >
-                <label class="setting-label">白玉 >=</label>
-                <n-input-number
-                  v-model:value="batchSettings.smartDepartureJadeThreshold"
-                  :min="0"
-                  :step="100"
-                  size="small"
-                  style="width: 100px"
-                />
-              </div>
-              <div
-                class="setting-item"
-                style="
-                  flex-direction: row;
-                  justify-content: space-between;
-                  align-items: center;
-                "
-              >
-                <label class="setting-label">刷新卷 >=</label>
-                <n-input-number
-                  v-model:value="batchSettings.smartDepartureTicketThreshold"
-                  :min="0"
-                  :step="1"
-                  size="small"
-                  style="width: 100px"
-                />
-              </div>
-            </div>
-            <n-divider title-placement="left" style="margin: 12px 0 8px 0"
               >功法赠送设置</n-divider
             >
             <div class="settings-grid">
@@ -2874,7 +2724,6 @@ import {
   formationOptions,
   bossTimesOptions,
   availableTasks,
-  CarresearchItem,
   FISH_TARGET,
   ARENA_TARGET,
   taskColumns,
@@ -2901,18 +2750,10 @@ import {
   // Log utilities
   createLogManager,
   addTaskSaveLog,
-  // Car utilities
-  normalizeCars,
-  gradeLabel,
-  isBigPrize,
-  countRacingRefreshTickets,
-  shouldSendCar,
-  canClaim,
   // Task factories
   createTasksHangUp,
   createTasksBottle,
   createTasksTower,
-  createTasksCar,
   createTasksItem,
   createTasksDungeon,
   createTasksArena,
@@ -3021,13 +2862,6 @@ const getSortIcon = (field) => {
 };
 
 const tokens = computed(() => tokenStore.gameTokens);
-const isCarActivityOpen = computed(() => {
-  const now = new Date();
-  const day = now.getDay();
-  const hour = now.getHours();
-  // 1=Mon, 2=Tue, 3=Wed; 6点之后
-  return day >= 1 && day <= 3 && hour >= 6;
-});
 const ismengjingActivityOpen = computed(() => {
   const day = new Date().getDay();
   return day === 0 || day === 1 || day === 3 || day === 4;
@@ -3420,28 +3254,21 @@ const batchSettings = reactive({
   receiverId: "",
   password: "",
   tokenListColumns: 2,
-  useGoldRefreshFallback: false,
   // 延迟配置（毫秒）
   commandDelay: 500, // 命令间延迟
   taskDelay: 500, // 任务间延迟
   actionDelay: 300, // 一般操作延迟（开箱、钓鱼、招募等）
   battleDelay: 500, // 战斗延迟（宝库、竞技场等）
-  refreshDelay: 1000, // 刷新延迟（发车刷新等）
+  refreshDelay: 1000, // 刷新延迟
   longDelay: 3000, // 长延迟（功法赠送等）
   // 其他配置
   maxActive: 2,
-  carMinColor: 4,
   connectionTimeout: 10000,
   reconnectDelay: 1000,
   maxLogEntries: 1000,
   // 页面刷新配置
   enableRefresh: false,
   refreshInterval: 360, // 分钟
-  smartDepartureGoldThreshold: 0,
-  smartDepartureRecruitThreshold: 0,
-  smartDepartureJadeThreshold: 0,
-  smartDepartureTicketThreshold: 0,
-  smartDepartureMatchAll: false,
 });
 
 // Load batch settings from localStorage
@@ -3527,8 +3354,6 @@ const taskGroupDefinitions = [
       "batchclubsign",
       "batchStudy",
       "batcharenafight",
-      "batchSmartSendCar",
-      "batchClaimCars",
       "batchCampChallenge",
       "batchCampChallengePet",
       "batchCampClaimTasks",
@@ -3608,7 +3433,6 @@ const groupedAvailableTasks = computed(() => {
 const cronValidation = ref({ valid: true, message: "" });
 const cronNextRuns = ref([]);
 
-// 注: availableTasks, CarresearchItem, taskColumns 已从 @/utils/batch 导入
 
 // ======================
 // Scheduled Tasks Storage
@@ -3948,7 +3772,6 @@ const exportConfig = () => {
         recruitCount: batchSettings.recruitCount,
         defaultBoxType: batchSettings.defaultBoxType,
         defaultFishType: batchSettings.defaultFishType,
-        carMinColor: batchSettings.carMinColor,
         commandDelay: batchSettings.commandDelay,
         taskDelay: batchSettings.taskDelay,
         actionDelay: batchSettings.actionDelay,
@@ -3957,14 +3780,6 @@ const exportConfig = () => {
         longDelay: batchSettings.longDelay,
         maxActive: batchSettings.maxActive,
         tokenListColumns: batchSettings.tokenListColumns,
-        useGoldRefreshFallback: batchSettings.useGoldRefreshFallback,
-        smartDepartureGoldThreshold: batchSettings.smartDepartureGoldThreshold,
-        smartDepartureRecruitThreshold:
-          batchSettings.smartDepartureRecruitThreshold,
-        smartDepartureJadeThreshold: batchSettings.smartDepartureJadeThreshold,
-        smartDepartureTicketThreshold:
-          batchSettings.smartDepartureTicketThreshold,
-        smartDepartureMatchAll: batchSettings.smartDepartureMatchAll,
       },
       tokenSettings: tokenSettings,
     };
@@ -4569,17 +4384,6 @@ const executeScheduledTask = async (task) => {
         return;
       }
 
-      if (
-        ["batchSmartSendCar", "batchClaimCars"].includes(taskName) &&
-        !isCarActivityOpen.value
-      ) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          message: `跳过任务: ${availableTasks.find((t) => t.value === taskName)?.label || taskName} (不在发车开放时间)`,
-          type: "warning",
-        });
-        return;
-      }
 
       if (
         ["batchTopUpArena", "batcharenafight"].includes(taskName) &&
@@ -5731,10 +5535,6 @@ const createTaskDeps = () => ({
   logContainer,
   autoScrollLog,
   nextTick,
-  shouldSendCar,
-  canClaim,
-  normalizeCars,
-  gradeLabel,
   // 设置相关
   currentSettings,
   helperSettings,
@@ -5776,8 +5576,6 @@ const {
   batchMergeItems,
 } = tasksTower;
 
-const tasksCar = createTasksCar(createTaskDeps());
-const { batchSmartSendCar, batchClaimCars } = tasksCar;
 
 const tasksItem = createTasksItem(createTaskDeps());
 const {
