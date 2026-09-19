@@ -267,19 +267,27 @@ app.get("/health", (req, res) => {
  res.json({ status: "ok", time: new Date().toISOString(), activeCrons: cronJobs.size, logsInMemory: logs.length });
 });
 
-app.get("/api/tokens", async (req, res) => {
+function requireApiKey(req, res, next) {
+ const provided = req.header("x-api-key") || req.header("authorization")?.replace(/^Bearer\s+/i, "");
+ if (!process.env.API_KEY || provided !== process.env.API_KEY) {
+ return res.status(401).json({ error: "Unauthorized" });
+ }
+ next();
+}
+
+app.get("/api/tokens", requireApiKey, async (req, res) => {
  const { data, error } = await supabase.from("tokens").select("*").order("created_at");
  if (error) return res.status(500).json({ error: error.message });
  res.json(data);
 });
 
-app.post("/api/tokens", async (req, res) => {
+app.post("/api/tokens", requireApiKey, async (req, res) => {
  const { data, error } = await supabase.from("tokens").insert(req.body).select();
  if (error) return res.status(400).json({ error: error.message });
  res.json(data);
 });
 
-app.delete("/api/tokens/:id", async (req, res) => {
+app.delete("/api/tokens/:id", requireApiKey, async (req, res) => {
  const { error } = await supabase.from("tokens").delete().eq("id", req.params.id);
  if (error) return res.status(400).json({ error: error.message });
  res.json({ ok: true });
